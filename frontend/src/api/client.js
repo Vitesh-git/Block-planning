@@ -3,7 +3,7 @@ import axios from 'axios'
 // Base URL: in dev, Vite proxies /api -> backend. In production set VITE_API_BASE.
 const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1'
 
-const api = axios.create({ baseURL: API_BASE, timeout: 60000 })
+const api = axios.create({ baseURL: API_BASE, timeout: 180000 })
 
 export const Pipeline = {
   run: (body = { reset: true }) => api.post('/pipeline/run', body).then((r) => r.data),

@@ -11,7 +11,7 @@ services:
     autoDeploy: true
     envVars:
       - key: OPT_TIME_LIMIT_SECONDS
-        value: "15"
+        value: "10"
       # Allow the browser app to call this API. "*" is fine for a demo;
       # tighten to your exact Vercel URL later for production.
       - key: CORS_ORIGINS

@@ -210,7 +210,7 @@ def optimize_blocks(
     solver.parameters.max_time_in_seconds = float(
         time_limit_s or settings.OPT_TIME_LIMIT_SECONDS
     )
-    solver.parameters.num_search_workers = 8
+    solver.parameters.num_search_workers = 2  # free-tier: fewer workers = less contention
     status = solver.Solve(model)
 
     result = PlanResult()
