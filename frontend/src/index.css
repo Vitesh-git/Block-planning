@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+/* Leaflet map container must have an explicit height */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  border-radius: 0.75rem;
+}
+
+.scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
