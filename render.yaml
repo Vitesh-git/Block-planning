@@ -1,0 +1,18 @@
+# Render blueprint — deploys the FastAPI backend as a Docker web service.
+# In Render: New + → Blueprint → connect this repo → it reads this file.
+services:
+  - type: web
+    name: railway-bps-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: Dockerfile
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: OPT_TIME_LIMIT_SECONDS
+        value: "15"
+      # Allow the browser app to call this API. "*" is fine for a demo;
+      # tighten to your exact Vercel URL later for production.
+      - key: CORS_ORIGINS
+        value: "*"
