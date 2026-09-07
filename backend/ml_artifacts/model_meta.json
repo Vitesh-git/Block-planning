@@ -1,0 +1,79 @@
+{
+  "algorithm": "xgboost",
+  "accuracy": 0.8928571428571429,
+  "n_train": 420,
+  "n_test": 140,
+  "features": [
+    "severity",
+    "asset_criticality",
+    "overdue_days",
+    "traffic_gmt",
+    "estimated_duration_min",
+    "requires_traffic_block",
+    "gang_size",
+    "sla_pressure",
+    "traffic_impact",
+    "dept_eng",
+    "dept_snt",
+    "dept_trd"
+  ],
+  "classes": [
+    "Critical",
+    "High",
+    "Low",
+    "Medium"
+  ],
+  "feature_importances": {
+    "severity": 0.10557657480239868,
+    "asset_criticality": 0.09959586709737778,
+    "overdue_days": 0.07894288003444672,
+    "traffic_gmt": 0.04141640663146973,
+    "estimated_duration_min": 0.02109409123659134,
+    "requires_traffic_block": 0.20380745828151703,
+    "gang_size": 0.024455351755023003,
+    "sla_pressure": 0.17540647089481354,
+    "traffic_impact": 0.1871228665113449,
+    "dept_eng": 0.01938939467072487,
+    "dept_snt": 0.03165443241596222,
+    "dept_trd": 0.011538202874362469
+  },
+  "classification_report": {
+    "Critical": {
+      "precision": 0.8717948717948718,
+      "recall": 0.918918918918919,
+      "f1-score": 0.8947368421052632,
+      "support": 37.0
+    },
+    "High": {
+      "precision": 0.9253731343283582,
+      "recall": 0.8857142857142857,
+      "f1-score": 0.9051094890510949,
+      "support": 70.0
+    },
+    "Low": {
+      "precision": 0.5,
+      "recall": 0.5,
+      "f1-score": 0.5,
+      "support": 2.0
+    },
+    "Medium": {
+      "precision": 0.875,
+      "recall": 0.9032258064516129,
+      "f1-score": 0.8888888888888888,
+      "support": 31.0
+    },
+    "accuracy": 0.8928571428571429,
+    "macro avg": {
+      "precision": 0.7930420015308075,
+      "recall": 0.8019647527712044,
+      "f1-score": 0.7971838050113117,
+      "support": 140.0
+    },
+    "weighted avg": {
+      "precision": 0.8939823547099666,
+      "recall": 0.8928571428571429,
+      "f1-score": 0.8929891639073353,
+      "support": 140.0
+    }
+  }
+}

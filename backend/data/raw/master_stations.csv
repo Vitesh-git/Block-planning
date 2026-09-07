@@ -1,0 +1,30 @@
+corridor_id,corridor_name,station_code,station_name,km_post,electrified,traffic_gmt
+COR-NDLS-CNB,New Delhi – Kanpur (Grand Trunk),NDLS,New Delhi,0,True,95
+COR-NDLS-CNB,New Delhi – Kanpur (Grand Trunk),GZB,Ghaziabad,24,True,95
+COR-NDLS-CNB,New Delhi – Kanpur (Grand Trunk),ALJN,Aligarh Jn,130,True,95
+COR-NDLS-CNB,New Delhi – Kanpur (Grand Trunk),TDL,Tundla Jn,205,True,95
+COR-NDLS-CNB,New Delhi – Kanpur (Grand Trunk),ETW,Etawah,310,True,95
+COR-NDLS-CNB,New Delhi – Kanpur (Grand Trunk),CNB,Kanpur Central,440,True,95
+COR-CNB-DDU,Kanpur – Pt. Deen Dayal Upadhyaya,CNB,Kanpur Central,440,True,88
+COR-CNB-DDU,Kanpur – Pt. Deen Dayal Upadhyaya,FTP,Fatehpur,517,True,88
+COR-CNB-DDU,Kanpur – Pt. Deen Dayal Upadhyaya,ALD,Prayagraj Jn,634,True,88
+COR-CNB-DDU,Kanpur – Pt. Deen Dayal Upadhyaya,MZP,Mirzapur,720,True,88
+COR-CNB-DDU,Kanpur – Pt. Deen Dayal Upadhyaya,DDU,DDU Jn (Mughalsarai),800,True,88
+COR-BRC-ST,Vadodara – Surat (Western Trunk),BRC,Vadodara Jn,0,True,78
+COR-BRC-ST,Vadodara – Surat (Western Trunk),BH,Bharuch Jn,70,True,78
+COR-BRC-ST,Vadodara – Surat (Western Trunk),ANND,Anand Jn,35,True,78
+COR-BRC-ST,Vadodara – Surat (Western Trunk),ST,Surat,130,True,78
+COR-HWH-ASN,Howrah – Asansol (Eastern Trunk),HWH,Howrah Jn,0,True,92
+COR-HWH-ASN,Howrah – Asansol (Eastern Trunk),BWN,Barddhaman Jn,107,True,92
+COR-HWH-ASN,Howrah – Asansol (Eastern Trunk),DGR,Durgapur,158,True,92
+COR-HWH-ASN,Howrah – Asansol (Eastern Trunk),ASN,Asansol Jn,200,True,92
+COR-SBC-JTJ,Bengaluru – Jolarpettai (South Western),SBC,KSR Bengaluru,0,True,65
+COR-SBC-JTJ,Bengaluru – Jolarpettai (South Western),BNC,Bengaluru Cantt,4,True,65
+COR-SBC-JTJ,Bengaluru – Jolarpettai (South Western),BWT,Bangarapet,65,True,65
+COR-SBC-JTJ,Bengaluru – Jolarpettai (South Western),KPN,Kuppam,110,True,65
+COR-SBC-JTJ,Bengaluru – Jolarpettai (South Western),JTJ,Jolarpettai Jn,148,True,65
+COR-BSL-NGP,Bhusaval – Nagpur (Central Trunk),BSL,Bhusaval Jn,0,True,84
+COR-BSL-NGP,Bhusaval – Nagpur (Central Trunk),AK,Akola Jn,130,True,84
+COR-BSL-NGP,Bhusaval – Nagpur (Central Trunk),BD,Badnera Jn,210,True,84
+COR-BSL-NGP,Bhusaval – Nagpur (Central Trunk),WR,Wardha Jn,290,True,84
+COR-BSL-NGP,Bhusaval – Nagpur (Central Trunk),NGP,Nagpur Jn,360,True,84
