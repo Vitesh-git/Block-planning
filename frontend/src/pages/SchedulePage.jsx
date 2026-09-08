@@ -14,7 +14,7 @@ export default function SchedulePage() {
   const [calendar, setCalendar] = useState({})
   const [unscheduled, setUnscheduled] = useState([])
   const [range, setRange] = useState('weekly')
-  const [mode, setMode] = useState('calendar')
+  const [mode, setMode] = useState('timeline')
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
