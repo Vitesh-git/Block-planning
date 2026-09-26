@@ -212,3 +212,6 @@ Kept deliberately small (see `docs/ARCHITECTURE.md` → *Storage policy*):
   (200), `AUDIT_RETENTION` (10 000 rows), `SCENARIO_LIMIT` (50).
 - Logs go to stdout; set `LOG_FILE` for a rotating file capped at
   `LOG_MAX_BYTES` × (`LOG_BACKUPS` + 1).
+
+  WEBSITE LINK::
+  block-planning.vercel.app
