@@ -1,10 +1,13 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
+import { getActor, setActor } from '../api/client'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: '📊' },
   { to: '/schedule', label: 'AI Schedule', icon: '🗓️' },
   { to: '/tasks', label: 'Prioritized Tasks', icon: '🚦' },
   { to: '/map', label: 'Corridor Map', icon: '🗺️' },
+  { to: '/lab', label: 'Planning Lab', icon: '🧪' },
   { to: '/reports', label: 'Reports', icon: '📄' },
 ]
 
@@ -40,6 +43,7 @@ export default function Layout({ children }) {
             </NavLink>
           ))}
         </nav>
+        <ActorField />
         <div className="px-5 py-4 text-[11px] text-slate-400 border-t border-white/10">
           Automatic Block Planning System<br />
           Engineering · S&amp;T · Traction
@@ -47,5 +51,22 @@ export default function Layout({ children }) {
       </aside>
       <main className="flex-1 overflow-x-hidden">{children}</main>
     </div>
+  )
+}
+
+// Name recorded on approvals, overrides and live events (no login in this app).
+function ActorField() {
+  const [name, setName] = useState(getActor())
+  return (
+    <label className="block px-5 py-3 border-t border-white/10">
+      <span className="text-[10px] uppercase tracking-wide text-slate-400">Acting as</span>
+      <input
+        value={name}
+        maxLength={64}
+        placeholder="Your name / designation"
+        onChange={(e) => { setName(e.target.value); setActor(e.target.value.trim()) }}
+        className="mt-1 w-full rounded-md bg-white/10 border border-white/10 px-2 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-rail-accent"
+      />
+    </label>
   )
 }

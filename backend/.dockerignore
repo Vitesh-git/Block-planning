@@ -1,0 +1,16 @@
+# Keep the backend image to what is needed at runtime.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+tests/
+*.db
+*.db-journal
+*.log
+.env
+.git/
+.gitignore
+Dockerfile
+.dockerignore

@@ -5,6 +5,7 @@ import SchedulePage from './pages/SchedulePage.jsx'
 import TasksPage from './pages/TasksPage.jsx'
 import MapPage from './pages/MapPage.jsx'
 import ReportsPage from './pages/ReportsPage.jsx'
+import PlanningLabPage from './pages/PlanningLabPage.jsx'
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
         <Route path="/schedule" element={<SchedulePage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/map" element={<MapPage />} />
+        <Route path="/lab" element={<PlanningLabPage />} />
         <Route path="/reports" element={<ReportsPage />} />
       </Routes>
     </Layout>

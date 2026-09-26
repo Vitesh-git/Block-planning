@@ -1,0 +1,9 @@
+# node_modules is installed inside the image; never copy the host copy.
+node_modules/
+dist/
+.vite/
+*.log
+.env
+.git/
+Dockerfile
+.dockerignore

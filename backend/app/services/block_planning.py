@@ -14,7 +14,7 @@ from collections import defaultdict
 
 from sqlalchemy.orm import Session
 
-from app.models import BlockTask, MaintenanceBlock, MaintenanceTask, MaintenanceWindow
+from app.models import BlockTask, MaintenanceBlock, MaintenanceTask
 
 
 def group_tasks_by_corridor_location(db: Session) -> list[dict]:
@@ -103,14 +103,6 @@ def _count(labels):
     return dict(c)
 
 
-def _window_minutes(w) -> int:
-    def m(hhmm):
-        h, mm = hhmm.split(":")
-        return int(h) * 60 + int(mm)
-    length = m(w.window_end) - m(w.window_start)
-    return length + 24 * 60 if length <= 0 else length
-
-
 def unscheduled_tasks(db: Session) -> list[dict]:
     """Block-requiring pending tasks the optimizer could NOT place, each with a
     plain reason: no window on the corridor, work longer than any window, or the
@@ -122,9 +114,11 @@ def unscheduled_tasks(db: Session) -> list[dict]:
         .filter(MaintenanceTask.requires_traffic_block == True)  # noqa: E712
         .all()
     )
+    from app.services.optimization import granted_windows, window_length
+
     win_by_corridor: dict[str, list[int]] = defaultdict(list)
-    for w in db.query(MaintenanceWindow).all():
-        win_by_corridor[w.corridor_id].append(_window_minutes(w))
+    for w in granted_windows(db):
+        win_by_corridor[w.corridor_id].append(window_length(w))
 
     out = []
     for t in tasks:

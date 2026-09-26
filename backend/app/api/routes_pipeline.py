@@ -2,40 +2,60 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
-
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db, init_db
+from app.core.database import Base, engine, get_db, init_db
 from app.models import (
+    AuditEvent,
     BlockTask,
     Corridor,
     MaintenanceBlock,
     MaintenanceTask,
     MaintenanceWindow,
+    PlanVersion,
     Station,
     Train,
 )
 from app.schemas.schemas import InjectRequest, PipelineRequest
 from app.services import data_integration as di
+from app.services import simulation, traffic_forecast
 from app.services.ai_prioritization import get_prioritizer
+from app.services.governance import GovernanceError, record_audit
 from app.services.optimization import run_and_persist
+from app.services.rescheduling import apply_event
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
+
+# Tables cleared by a full reset (order respects foreign keys). Saved what-if
+# scenarios are kept: they hold only parameters + metrics.
+RESET_TABLES = (BlockTask, MaintenanceBlock, PlanVersion, AuditEvent, MaintenanceTask,
+                MaintenanceWindow, Train, Station, Corridor)
+
+
+# Plan tables are dropped and recreated on reset, which also upgrades older
+# SQLite files to never-reused ids (AUTOINCREMENT).
+RECREATE_TABLES = (BlockTask, MaintenanceBlock, PlanVersion, AuditEvent)
+
+
+def reset_all(db: Session) -> None:
+    for model in RESET_TABLES:
+        db.query(model).delete()
+    db.commit()
+    db.close()
+    tables = [m.__table__ for m in RECREATE_TABLES]
+    Base.metadata.drop_all(bind=engine, tables=tables)
+    Base.metadata.create_all(bind=engine, tables=tables)
+    simulation.clear_cache()
 
 
 @router.post("/run")
 def run_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
-    """Full pipeline: (re)load data -> AI prioritization -> optimize blocks."""
+    """Full pipeline: (re)load data -> AI prioritization -> traffic forecast ->
+    optimize blocks (plan version 1 after a reset)."""
     init_db()
-
     if req.reset:
-        for model in (BlockTask, MaintenanceBlock, MaintenanceTask,
-                      MaintenanceWindow, Train, Station, Corridor):
-            db.query(model).delete()
-        db.commit()
+        reset_all(db)
 
     # 1. Data integration
     merged = di.normalize_feeds()
@@ -46,13 +66,20 @@ def run_pipeline(req: PipelineRequest, db: Session = Depends(get_db)):
     # 2. AI prioritization
     prio = get_prioritizer().apply_to_db(db)
 
-    # 3. Optimization
-    opt = run_and_persist(db, time_limit_s=req.time_limit_s)
+    # 3. Traffic forecast (retrained on the freshly loaded running data)
+    forecast = traffic_forecast.get_forecaster(db, retrain=True)
+
+    # 4. Optimization
+    if req.reset:
+        record_audit(db, req.actor, "PLAN", "-", "PIPELINE_RESET", "", "", "Data reloaded and re-planned.")
+    opt = run_and_persist(db, time_limit_s=req.time_limit_s, trigger="FULL_PLAN",
+                          reason="Full pipeline run", actor=req.actor or "system")
 
     return {
         "status": "ok",
         "data_integration": integ,
         "ai_prioritization": prio,
+        "traffic_forecast": forecast.info if forecast else {},
         "optimization": opt,
     }
 
@@ -64,88 +91,51 @@ def prioritize(db: Session = Depends(get_db)):
 
 @router.post("/optimize")
 def optimize(req: PipelineRequest, db: Session = Depends(get_db)):
-    return run_and_persist(db, time_limit_s=req.time_limit_s)
+    """Full re-plan of all blocks (approvals are not kept)."""
+    return run_and_persist(db, time_limit_s=req.time_limit_s, trigger="FULL_PLAN",
+                           reason="Manual full re-optimization", actor=req.actor or "system")
 
 
 @router.post("/inject-emergency")
 def inject_emergency(req: InjectRequest, db: Session = Depends(get_db)):
-    """What-if: inject an urgent critical defect, then re-prioritize and
-    re-optimize so the plan adapts live (without wiping existing data)."""
-    corridor = None
-    if req.corridor_id:
-        corridor = db.get(Corridor, req.corridor_id)
-        if not corridor:
-            raise HTTPException(status_code=404, detail="Corridor not found")
-    else:
-        # Prefer a corridor that has a granted window (so the emergency can be
-        # scheduled and the adaptation is visible), busiest first.
-        with_windows = {w.corridor_id for w in db.query(MaintenanceWindow).all()}
-        corridors = db.query(Corridor).order_by(Corridor.traffic_gmt.desc()).all()
-        corridor = next((c for c in corridors if c.corridor_id in with_windows), None) or (corridors[0] if corridors else None)
-    if not corridor:
-        raise HTTPException(status_code=400, detail="No corridors loaded — run the planner first.")
-
-    station = (
-        db.query(Station).filter(Station.corridor_id == corridor.corridor_id).first()
-    )
-    n = db.query(MaintenanceTask).filter(MaintenanceTask.source_system == "EMG").count() + 1
-
-    task = MaintenanceTask(
-        source_id=f"EMG-{n:03d}",
-        source_system="EMG",
-        department="ENG",
-        corridor_id=corridor.corridor_id,
-        station_code=station.station_code if station else "NDLS",
-        km_post=station.km_post if station else 0.0,
-        defect_code="RAIL_FRACTURE",
-        description=req.description or "Emergency rail fracture reported — immediate possession required.",
-        severity=5,
-        asset_criticality=5,
-        traffic_gmt=corridor.traffic_gmt,
-        reported_date=date.today(),
-        due_date=date.today() - timedelta(days=2),
-        overdue_days=2,
-        estimated_duration_min=60,
-        requires_traffic_block=True,
-        gang_size=8,
-        status="PENDING",
-    )
-    db.add(task)
-    db.commit()
-    db.refresh(task)
-
-    # Re-score everything (the new task included) and re-optimize.
-    get_prioritizer().apply_to_db(db)
-    opt = run_and_persist(db, time_limit_s=req.time_limit_s)
-    db.refresh(task)
-
-    scheduled_ids = {bt.task_id for bt in db.query(BlockTask).all()}
-
+    """Live event shortcut: inject an urgent critical defect and re-plan
+    incrementally (approved blocks stay frozen)."""
+    try:
+        res = apply_event(db, "EMERGENCY_DEFECT", actor=req.actor, corridor_id=req.corridor_id,
+                          description=req.description, time_limit_s=req.time_limit_s)
+    except LookupError as e:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(e))
+    except GovernanceError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    ev = res["event"]
     return {
         "status": "ok",
-        "injected": {
-            "id": task.id,
-            "source_id": task.source_id,
-            "corridor_id": task.corridor_id,
-            "priority_label": task.priority_label,
-            "priority_score": task.priority_score,
-        },
-        "scheduled": task.id in scheduled_ids,
-        "optimization": opt,
+        "injected": {k: ev.get(k) for k in ("task_id", "source_id", "corridor_id", "priority_label", "priority_score")},
+        "scheduled": ev.get("scheduled", False),
+        "optimization": res["optimization"],
     }
 
 
-# Description of the two-stage AI system, so the UI can present it honestly:
-#   Stage 1 scores & explains priority; Stage 2 (the core) plans the blocks.
+# Description of the AI system, so the UI can present it honestly.
 AI_ENGINE = {
     "stages": [
         {
             "name": "Explainable Priority Engine",
-            "kind": "Gradient-boosted classifier",
+            "kind": "Gradient-boosted classifier (scikit-learn)",
             "role": (
-                "Scores every maintenance task Critical/High/Medium/Low and "
-                "generates a plain-language reason for each decision, so planners "
-                "can trust and audit the ranking."
+                "Scores every maintenance task Critical/High/Medium/Low, shows the "
+                "drivers behind each decision, applies a transparent safety rule, "
+                "and keeps controller overrides (with reasons) on record."
+            ),
+        },
+        {
+            "name": "Traffic Forecaster",
+            "kind": "Poisson gradient-boosted regressor",
+            "role": (
+                "Forecasts passenger and goods trains per corridor and hour, so each "
+                "maintenance window is priced by the trains it would actually hold."
             ),
         },
         {
@@ -154,8 +144,9 @@ AI_ENGINE = {
             "role": (
                 "The planning brain: places priority-weighted tasks into granted "
                 "windows, guarantees no overlapping possessions per corridor, "
-                "combines multi-department work into shared blocks, and minimizes "
-                "the number of line possessions and traffic disruption."
+                "combines multi-department work into shared blocks, minimizes "
+                "possessions and forecast traffic disruption, and re-plans live "
+                "around approved blocks."
             ),
         },
     ],
@@ -166,5 +157,6 @@ AI_ENGINE = {
 def model_info():
     p = get_prioritizer()
     meta = dict(p.meta)
+    meta.pop("explain_background", None)  # internal, not useful to the UI
     meta["engine"] = AI_ENGINE
     return meta

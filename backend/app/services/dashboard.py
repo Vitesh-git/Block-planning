@@ -12,7 +12,7 @@ from app.models import (
     Corridor,
     MaintenanceBlock,
     MaintenanceTask,
-    Train,
+    PlanVersion,
 )
 from app.services.block_planning import coverage_analytics
 
@@ -43,6 +43,12 @@ def kpis(db: Session) -> dict:
     planned_boost = cov["coverage_ratio"] * 0.15
     asset_availability = round(min(0.999, base_avail + planned_boost), 3)
 
+    approvals = dict(
+        db.query(MaintenanceBlock.approval_status, func.count(MaintenanceBlock.id))
+        .group_by(MaintenanceBlock.approval_status).all()
+    )
+    latest = db.query(PlanVersion).order_by(PlanVersion.version.desc()).first()
+
     return {
         "total_tasks": total,
         "pending_tasks": pending,
@@ -57,6 +63,12 @@ def kpis(db: Session) -> dict:
         "optimized_blocks": cov["optimized_blocks"],
         "blocks_saved_vs_naive": cov["blocks_saved_vs_naive"],
         "avg_block_utilization": cov["avg_block_utilization"],
+        "approved_blocks": approvals.get("APPROVED", 0),
+        "pending_approval": approvals.get("PENDING", 0),
+        "rejected_blocks": approvals.get("REJECTED", 0),
+        "plan_version": latest.version if latest else 0,
+        "plan_updated_at": latest.changed_at.isoformat() if latest and latest.changed_at else None,
+        "plan_trigger": latest.trigger_event if latest else "",
     }
 
 

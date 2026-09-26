@@ -22,3 +22,39 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Test / coverage / build outputs
+coverage/
+htmlcov/
+.coverage
+build/
+*.egg
+
+# Logs, temp & cache files (never commit)
+*.log
+logs/
+*.tmp
+*.temp
+*.cache
+.cache/
+*.bak
+
+# Generated exports / scratch results (reports are streamed, not saved)
+exports/
+tmp/
+backend/data/tmp/
+
+# Database backups (keep backups outside the repo)
+*.db-journal
+*.sqlite
+*.sqlite3
+*backup*.db
+
+# ML training scratch (only the final model is kept, and it is regenerated)
+backend/ml_artifacts/*.pkl
+backend/ml_artifacts/checkpoints/
+
+# OS / OneDrive / IDE files
+Thumbs.db
+desktop.ini
+*.swp

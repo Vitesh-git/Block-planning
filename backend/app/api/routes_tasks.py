@@ -10,13 +10,13 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models import Corridor, MaintenanceTask
 from app.schemas.schemas import CorridorOut, TaskOut, TaskUpdate
+from app.services.ai_prioritization import get_prioritizer
 from app.services.block_planning import group_tasks_by_corridor_location
+from app.services.governance import GovernanceError, override_priority, record_audit, revert_to_ai
 
 router = APIRouter(tags=["tasks"])
 
 VALID_STATUS = {"PENDING", "IN_PROGRESS", "COMPLETED"}
-# Ordinal scores mirror the model's priority_score scale.
-PRIORITY_SCORE = {"Low": 0.15, "Medium": 0.45, "High": 0.72, "Critical": 0.95}
 
 
 @router.get("/corridors", response_model=list[CorridorOut])
@@ -56,24 +56,28 @@ def get_task(task_id: int, db: Session = Depends(get_db)):
 
 @router.patch("/tasks/{task_id}", response_model=TaskOut)
 def update_task(task_id: int, payload: TaskUpdate, db: Session = Depends(get_db)):
-    """Controller edit: change status and/or override the AI priority."""
+    """Controller edit: change status, override the AI priority (reason
+    required), or revert to the AI recommendation. Every change is audited."""
     t = db.get(MaintenanceTask, task_id)
     if not t:
         raise HTTPException(status_code=404, detail="Task not found")
+    try:
+        if payload.status is not None:
+            st = payload.status.upper()
+            if st not in VALID_STATUS:
+                raise GovernanceError(f"status must be one of {sorted(VALID_STATUS)}")
+            if st != t.status:
+                record_audit(db, payload.actor, "TASK", t.source_id, "STATUS", t.status, st, "")
+                t.status = st
 
-    if payload.status is not None:
-        st = payload.status.upper()
-        if st not in VALID_STATUS:
-            raise HTTPException(status_code=400, detail=f"status must be one of {sorted(VALID_STATUS)}")
-        t.status = st
-
-    if payload.priority_label is not None:
-        lbl = payload.priority_label.capitalize()
-        if lbl not in PRIORITY_SCORE:
-            raise HTTPException(status_code=400, detail=f"priority_label must be one of {list(PRIORITY_SCORE)}")
-        t.priority_label = lbl
-        t.priority_score = PRIORITY_SCORE[lbl]
-        t.priority_explanation = f"Manually set to {lbl} by the controller (overrides the AI recommendation)."
+        if payload.revert_to_ai:
+            revert_to_ai(db, t, payload.actor)
+            get_prioritizer().apply_to_db(db, [t])  # restore AI label/score/explanation now
+        elif payload.priority_label is not None and payload.priority_label.capitalize() != t.priority_label:
+            override_priority(db, t, payload.priority_label, payload.override_reason, payload.actor)
+    except GovernanceError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
 
     db.commit()
     db.refresh(t)

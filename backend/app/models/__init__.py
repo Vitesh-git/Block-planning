@@ -8,4 +8,7 @@ from app.models.models import (  # noqa: F401
     MaintenanceWindow,
     MaintenanceBlock,
     BlockTask,
+    PlanVersion,
+    AuditEvent,
+    Scenario,
 )

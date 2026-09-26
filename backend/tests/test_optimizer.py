@@ -105,5 +105,30 @@ def test_blocks_on_same_corridor_and_date_do_not_overlap():
             assert e1 <= s2, f"blocks overlap: {(s1, e1)} vs {(s2, e2)}"
 
 
+def test_task_longer_than_window_is_never_placed():
+    # 240-min job, 180-min window: must stay unscheduled (never truncated).
+    res = _solve([mk_task(1, "COR-A", "ENG", dur=240)], [mk_window(10, "COR-A")])
+    assert res.scheduled_task_ids == set()
+
+
+def test_gang_limit_serialises_work():
+    tasks = [mk_task(1, "COR-A", "ENG", dur=90), mk_task(2, "COR-A", "SNT", dur=90)]
+    res = optimize_blocks(tasks, [mk_window(10, "COR-A")], {"COR-A": 50}, time_limit_s=5, parallel_gangs=1)
+    assert res.scheduled_task_ids == {1, 2}
+    assert res.blocks[0]["planned_minutes"] == 180
+
+
+def test_forecast_disruption_steers_window_choice():
+    windows = [mk_window(10, "COR-A", "01:00", "04:00"), mk_window(11, "COR-A", "13:00", "16:00", "LEAN_PERIOD")]
+    res = optimize_blocks([mk_task(1, "COR-A", "ENG")], windows, {"COR-A": 50}, time_limit_s=5,
+                          disruption={10: 1.0, 11: 0.0})
+    assert res.blocks[0]["window"].id == 11
+
+
+def test_solver_metadata_is_reported():
+    res = _solve([mk_task(1, "COR-A", "ENG")], [mk_window(10, "COR-A")])
+    assert res.stats["num_variables"] > 0 and res.stats["num_constraints"] > 0
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

@@ -69,6 +69,12 @@ def _ensure_schema():
                         ))
                 except Exception:
                     pass  # column may already exist / dialect quirk — non-fatal
+            # indexes declared later (e.g. on status columns) for older DB files
+            for idx in table.indexes:
+                try:
+                    idx.create(bind=engine, checkfirst=True)
+                except Exception:
+                    pass
     except Exception:
         pass  # never block startup on the best-effort migration
 

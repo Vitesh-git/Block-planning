@@ -6,7 +6,7 @@ import Header from '../components/Header.jsx'
 import KpiCard from '../components/KpiCard.jsx'
 import Welcome from '../components/Welcome.jsx'
 import Stepper from '../components/Stepper.jsx'
-import InjectEmergencyButton from '../components/InjectEmergencyButton.jsx'
+import RescheduleControl from '../components/RescheduleControl.jsx'
 import InfoTip from '../components/InfoTip.jsx'
 import { GLOSSARY } from '../utils/domain'
 import { useCountUp } from '../hooks/useCountUp'
@@ -75,7 +75,7 @@ export default function DashboardPage() {
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex-1 min-w-[280px]"><Stepper current={3} /></div>
-          <InjectEmergencyButton onDone={load} />
+          <RescheduleControl onDone={load} />
         </div>
 
         <ImpactHero kpis={kpis} />

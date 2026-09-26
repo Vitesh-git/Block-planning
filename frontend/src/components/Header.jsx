@@ -40,6 +40,7 @@ export default function Header({ title, subtitle, onRefresh }) {
           <button
             onClick={run}
             disabled={running}
+            title="Reloads all source data and builds a fresh plan (clears approvals and plan history). For live changes use ⚡ Live event."
             className="bg-rail-accent hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 whitespace-nowrap"
           >
             {running ? (

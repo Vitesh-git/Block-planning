@@ -46,6 +46,20 @@ class Settings(BaseSettings):
 
     # Optimization defaults
     OPT_TIME_LIMIT_SECONDS: int = int(os.getenv("OPT_TIME_LIMIT_SECONDS", "20"))
+    # What-if runs are interactive, so they get a shorter default budget.
+    SIM_TIME_LIMIT_SECONDS: int = int(os.getenv("SIM_TIME_LIMIT_SECONDS", "8"))
+
+    # Logging: stdout only by default (the platform rotates it). Set LOG_FILE
+    # to also write a size-capped rotating file (LOG_MAX_BYTES x LOG_BACKUPS).
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    LOG_FILE: str = os.getenv("LOG_FILE", "")
+    LOG_MAX_BYTES: int = int(os.getenv("LOG_MAX_BYTES", str(1_000_000)))
+    LOG_BACKUPS: int = int(os.getenv("LOG_BACKUPS", "2"))
+
+    # Retention caps so metadata tables cannot grow without bound.
+    PLAN_VERSION_RETENTION: int = int(os.getenv("PLAN_VERSION_RETENTION", "200"))
+    AUDIT_RETENTION: int = int(os.getenv("AUDIT_RETENTION", "10000"))
+    SCENARIO_LIMIT: int = int(os.getenv("SCENARIO_LIMIT", "50"))
 
     class Config:
         env_file = ".env"

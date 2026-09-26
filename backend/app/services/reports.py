@@ -26,7 +26,7 @@ from reportlab.platypus import (
 )
 from sqlalchemy.orm import Session
 
-from app.models import BlockTask, MaintenanceBlock, MaintenanceTask
+from app.models import BlockTask, MaintenanceBlock, MaintenanceTask, PlanVersion
 
 PRIORITY_COLORS = {
     "Critical": colors.HexColor("#b91c1c"),
@@ -68,8 +68,10 @@ def build_pdf(db: Session, period: str = "weekly") -> bytes:
 
     story = []
     story.append(Paragraph("Indian Railways — Automatic Block Plan", title_style))
+    pv = db.query(PlanVersion).order_by(PlanVersion.version.desc()).first()
     story.append(Paragraph(
         f"{period.capitalize()} Maintenance Block Plan &nbsp;|&nbsp; "
+        f"Plan version {pv.version if pv else '-'} &nbsp;|&nbsp; "
         f"Generated {datetime.now():%Y-%m-%d %H:%M}", styles["Normal"]))
     story.append(Spacer(1, 0.4 * cm))
 
@@ -93,7 +95,7 @@ def build_pdf(db: Session, period: str = "weekly") -> bytes:
 
     for d in sorted(by_date):
         story.append(Paragraph(f"{d:%A, %d %b %Y}", h2))
-        rows = [["Block", "Corridor", "Window", "Depts", "Tasks", "Util", "Disrupt."]]
+        rows = [["Block", "Corridor", "Window", "Depts", "Tasks", "Util", "Disrupt.", "Sanction"]]
         for b, tasks in by_date[d]:
             rows.append([
                 b.block_ref,
@@ -103,8 +105,9 @@ def build_pdf(db: Session, period: str = "weekly") -> bytes:
                 str(b.task_count),
                 f"{b.utilization:.0%}",
                 f"{b.disruption_score:.0f}",
+                (b.approval_status or "PENDING") + (f" ({b.approved_by})" if b.approved_by else ""),
             ])
-        tbl = Table(rows, repeatRows=1, colWidths=[3*cm, 3.5*cm, 3*cm, 2.6*cm, 1.6*cm, 1.6*cm, 2*cm])
+        tbl = Table(rows, repeatRows=1, colWidths=[3*cm, 3.5*cm, 3*cm, 2.6*cm, 1.6*cm, 1.6*cm, 2*cm, 4.2*cm])
         tbl.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a8a")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -132,7 +135,7 @@ def build_excel(db: Session, period: str = "weekly") -> bytes:
     headers = [
         "Block Ref", "Date", "Corridor", "Start", "End", "Planned (min)",
         "Window (min)", "Utilization", "Departments", "Multi-Dept",
-        "Task Count", "Disruption",
+        "Task Count", "Disruption", "Sanction", "Sanctioned By", "Plan Version",
     ]
     ws.append(headers)
     for c in ws[1]:
@@ -147,6 +150,7 @@ def build_excel(db: Session, period: str = "weekly") -> bytes:
             b.planned_minutes, b.window_minutes, round(b.utilization, 3),
             b.departments, "Yes" if b.is_multi_dept else "No",
             b.task_count, b.disruption_score,
+            b.approval_status or "PENDING", b.approved_by or "", b.plan_version or 0,
         ])
     for col in ws.columns:
         width = max(len(str(c.value)) for c in col if c.value is not None) + 2

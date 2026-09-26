@@ -1,11 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Blocks, Dashboard } from '../api/client'
+import { Blocks, Dashboard, Planning, errorText } from '../api/client'
 import Header from '../components/Header.jsx'
 import PriorityBadge, { DeptBadge } from '../components/PriorityBadge.jsx'
 import GanttSchedule from '../components/GanttSchedule.jsx'
 import InfoTip from '../components/InfoTip.jsx'
 import ApprovalBadge from '../components/ApprovalBadge.jsx'
-import InjectEmergencyButton from '../components/InjectEmergencyButton.jsx'
+import RescheduleControl from '../components/RescheduleControl.jsx'
 import { useCorridorNames } from '../hooks/useCorridorNames'
 import { GLOSSARY, dept } from '../utils/domain'
 
@@ -19,28 +19,50 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [showUnsched, setShowUnsched] = useState(false)
+  const [versions, setVersions] = useState([])
+  const [showVersions, setShowVersions] = useState(false)
+  const [note, setNote] = useState('')
+  const [err, setErr] = useState('')
+  const [audit, setAudit] = useState([])
+  const [confirmAll, setConfirmAll] = useState(false)
   const corridorName = useCorridorNames()
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [b, c, u] = await Promise.all([Blocks.list(), Dashboard.calendar(), Blocks.unscheduled()])
-    setBlocks(b); setCalendar(c); setUnscheduled(u)
+    const [b, c, u, v] = await Promise.all([
+      Blocks.list(), Dashboard.calendar(), Blocks.unscheduled(), Planning.versions(15).catch(() => []),
+    ])
+    setBlocks(b); setCalendar(c); setUnscheduled(u); setVersions(v)
     setSelected((prev) => b.find((x) => x.id === prev?.id) || b[0] || null)
     setLoading(false)
   }, [])
   useEffect(() => { load() }, [load])
 
+  // Decision history of the selected block (audit trail).
+  useEffect(() => {
+    setNote(''); setErr('')
+    if (!selected?.block_ref) { setAudit([]); return }
+    Planning.audit({ entity_type: 'BLOCK', entity_id: selected.block_ref, limit: 20 }).then(setAudit).catch(() => setAudit([]))
+  }, [selected?.block_ref, selected?.approval_status])
+
   const approve = async (id, status) => {
-    setBusy(true)
+    if (status === 'REJECTED' && note.trim().length < 5) { setErr('Give a reason for the rejection (at least 5 characters).'); return }
+    setBusy(true); setErr('')
     try {
-      const updated = await Blocks.update(id, { approval_status: status })
+      const updated = await Blocks.update(id, { approval_status: status, note: note.trim() || undefined })
       setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...updated } : b)))
       setSelected((prev) => (prev?.id === id ? { ...prev, ...updated } : prev))
     } catch (e) {
-      alert(e?.response?.data?.detail || 'Update failed')
+      setErr(errorText(e, 'Update failed'))
     } finally {
       setBusy(false)
     }
+  }
+
+  const approveAll = async () => {
+    if (!confirmAll) { setConfirmAll(true); return }
+    setConfirmAll(false); setBusy(true)
+    try { await Blocks.approveAll(); await load() } catch (e) { setErr(errorText(e)) } finally { setBusy(false) }
   }
 
   const dates = Object.keys(calendar).sort()
@@ -49,6 +71,8 @@ export default function SchedulePage() {
   const shownBlocks = blocks.filter((b) => shownSet.has(b.date))
   const approvalByRef = Object.fromEntries(blocks.map((b) => [b.block_ref, b.approval_status]))
   const approvedCount = blocks.filter((b) => b.approval_status === 'APPROVED').length
+  const pendingCount = blocks.filter((b) => b.approval_status === 'PENDING').length
+  const latest = versions[0]
   const empty = !loading && blocks.length === 0
 
   return (
@@ -70,7 +94,19 @@ export default function SchedulePage() {
             </button>
           ))}
           <span className="text-xs text-slate-500 ml-1">{shownBlocks.length} blocks · {approvedCount} approved</span>
-          <div className="ml-auto"><InjectEmergencyButton onDone={load} /></div>
+          {latest && (
+            <button onClick={() => setShowVersions(true)} title="Plan version history"
+              className="text-[11px] font-semibold bg-slate-800 text-white rounded-full px-2 py-0.5">
+              Plan v{latest.version} · {TRIGGER[latest.trigger_event] || latest.trigger_event}
+            </button>
+          )}
+          {pendingCount > 0 && (
+            <button onClick={approveAll} onBlur={() => setConfirmAll(false)} disabled={busy}
+              className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border ${confirmAll ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50'}`}>
+              {confirmAll ? `Confirm: approve ${pendingCount}` : `✓ Approve all pending (${pendingCount})`}
+            </button>
+          )}
+          <div className="ml-auto"><RescheduleControl onDone={load} /></div>
         </div>
 
         {loading ? (
@@ -162,7 +198,19 @@ export default function SchedulePage() {
                       {corridorName(selected.corridor_id)} · {selected.date} · {selected.start_time}–{selected.end_time}
                     </div>
 
+                    {selected.approval_status !== 'PENDING' && selected.approved_by && (
+                      <div className="text-[11px] text-slate-500 mb-2">
+                        {selected.approval_status === 'APPROVED' ? 'Approved' : 'Rejected'} by <span className="font-semibold text-slate-700">{selected.approved_by}</span>
+                        {selected.approved_at && ` · ${new Date(selected.approved_at + 'Z').toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`}
+                        {selected.approval_note && <div className="italic">“{selected.approval_note}”</div>}
+                      </div>
+                    )}
+
                     {/* Sanction controls */}
+                    <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000}
+                      placeholder="Note / reason (required to reject)"
+                      className="w-full mb-2 border border-slate-200 rounded-md px-2 py-1.5 text-xs text-slate-700" />
+                    {err && <div className="text-[11px] text-red-600 mb-2">{err}</div>}
                     <div className="flex items-center gap-2 mb-3">
                       <button disabled={busy || selected.approval_status === 'APPROVED'} onClick={() => approve(selected.id, 'APPROVED')}
                         className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white">✓ Approve</button>
@@ -178,6 +226,7 @@ export default function SchedulePage() {
                       <Stat label={<InfoTip text={GLOSSARY.Utilization} label="Utilization">Utilization</InfoTip>} value={`${Math.round(selected.utilization * 100)}%`} />
                       <Stat label={<InfoTip text={GLOSSARY.Disruption} label="Disruption">Disruption</InfoTip>} value={selected.disruption_score} />
                     </div>
+                    <BlockWhy ex={selected.explanation} />
                     <div className="text-xs font-semibold text-slate-500 mb-1">Tasks in block</div>
                     <div className="space-y-2 max-h-64 overflow-y-auto scrollbar-thin">
                       {selected.tasks.map((t) => (
@@ -193,6 +242,16 @@ export default function SchedulePage() {
                         </div>
                       ))}
                     </div>
+                    {audit.length > 0 && (
+                      <div className="mt-3">
+                        <div className="text-xs font-semibold text-slate-500 mb-1">Decision history</div>
+                        <ul className="space-y-1 text-[11px] text-slate-600">
+                          {audit.map((a) => (
+                            <li key={a.id}><span className="font-semibold">{a.action}</span> by {a.actor} · {fmtTime(a.created_at)}{a.note ? ` — ${a.note}` : ''}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="text-slate-400 text-sm">Select a block to see details.</div>
@@ -240,10 +299,82 @@ export default function SchedulePage() {
                 </div>
               )}
             </div>
+            {showVersions && <VersionHistory versions={versions} onClose={() => setShowVersions(false)} />}
           </>
         )}
       </div>
     </>
+  )
+}
+
+const TRIGGER = {
+  FULL_PLAN: 'Full plan', EMERGENCY_DEFECT: 'Emergency defect', WINDOW_CANCELLED: 'Window cancelled',
+  WINDOW_REDUCED: 'Window shortened', TASK_COMPLETED: 'Task completed', REPLAN: 'Re-plan',
+}
+const fmtTime = (iso) => (iso ? new Date(iso + 'Z').toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '')
+
+// "Why this block" — structured explanation stored by the optimizer.
+function BlockWhy({ ex }) {
+  if (!ex || !ex.summary) return null
+  const t = ex.traffic || {}
+  return (
+    <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/50 p-2.5">
+      <div className="text-xs font-semibold text-slate-700 mb-1">🧠 Why this block</div>
+      <div className="text-[11px] text-slate-600 mb-1.5">{ex.summary}</div>
+      {t.source === 'forecast' && (
+        <div className="flex gap-1.5 flex-wrap mb-1.5 text-[10px] font-semibold">
+          <span className="rounded-full px-2 py-0.5 bg-white border border-slate-200 text-slate-700">🚆 {Math.round(t.pax)} passenger</span>
+          <span className="rounded-full px-2 py-0.5 bg-white border border-slate-200 text-slate-700">🚚 {Math.round(t.goods)} goods</span>
+          <span className="rounded-full px-2 py-0.5 bg-white border border-slate-200 text-slate-700">disruption {Number(t.disruption).toFixed(2)}</span>
+        </div>
+      )}
+      <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-slate-600">
+        {(ex.reasons || []).map((r) => <li key={r}>{r}</li>)}
+      </ul>
+    </div>
+  )
+}
+
+// Plan version history (dynamic rescheduling audit).
+function VersionHistory({ versions, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[700] bg-slate-900/30 flex justify-end" onClick={onClose}>
+      <div className="w-full max-w-md h-full bg-white shadow-xl p-5 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-slate-800">Plan version history</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none" aria-label="Close">×</button>
+        </div>
+        <ol className="space-y-3">
+          {versions.map((v) => (
+            <li key={v.version} className="border border-slate-200 rounded-lg p-3">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-800 text-sm">v{v.version} · {TRIGGER[v.trigger_event] || v.trigger_event}</span>
+                <span className="text-[10px] text-slate-400">{fmtTime(v.changed_at)}</span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">by {v.changed_by}{v.change_reason ? ` — ${v.change_reason}` : ''}</div>
+              <div className="mt-2 grid grid-cols-4 gap-1 text-center text-[10px]">
+                <Diff n={v.diff?.added} l="added" />
+                <Diff n={v.diff?.moved} l="moved" />
+                <Diff n={v.diff?.dropped} l="dropped" />
+                <Diff n={v.diff?.unchanged} l="unchanged" />
+              </div>
+              <div className="text-[10px] text-slate-400 mt-2">
+                {v.blocks} blocks · {v.tasks_scheduled} tasks · {v.solver_status} in {v.solve_time_s}s · {v.num_variables} vars / {v.num_constraints} constraints
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  )
+}
+
+function Diff({ n, l }) {
+  return (
+    <div className="bg-slate-50 rounded px-1 py-1">
+      <div className="font-bold text-slate-700 text-xs">{n ?? 0}</div>
+      <div className="text-slate-400">{l}</div>
+    </div>
   )
 }
 

@@ -236,49 +236,72 @@ def generate_defect_feed(catalogue, dept_code, prefix, n, stations, start_day, h
     return pd.DataFrame(rows)
 
 
-def generate_coa_timetable(stations, start_day, days=7):
+# Relative departures per hour of day. Passenger traffic peaks in the morning
+# and evening and dips in the early afternoon; goods (freight) trains are
+# pushed into the night and away from passenger peaks — as on Indian Railways
+# trunk routes. These shapes give the traffic forecaster a real signal.
+PAX_HOURLY = [0.35, 0.3, 0.25, 0.3, 0.5, 0.9, 1.4, 1.7, 1.6, 1.2, 1.0, 0.95,
+              0.85, 0.65, 0.6, 0.7, 1.0, 1.4, 1.6, 1.5, 1.2, 0.9, 0.7, 0.5]
+GOODS_HOURLY = [1.5, 1.6, 1.6, 1.5, 1.3, 1.0, 0.6, 0.5, 0.5, 0.7, 0.9, 1.0,
+                1.0, 1.1, 1.1, 1.0, 0.8, 0.5, 0.5, 0.6, 0.9, 1.2, 1.4, 1.5]
+PAX_TYPES = [("RAJ", "Rajdhani Express", 1), ("SF", "Superfast Express", 2),
+             ("EXP", "Mail/Express", 3), ("PASS", "Passenger", 4), ("MEMU", "MEMU/EMU", 4)]
+GOODS_SHARE = 0.4        # share of daily paths used by goods trains
+SUNDAY_FACTOR = {"pax": 0.9, "goods": 0.75}
+
+
+def _departures(n: int, weights: list[float]) -> list[int]:
+    p = np.array(weights) / sum(weights)
+    hours = np.random.choice(24, size=n, p=p)
+    return [int(h * 60 + np.random.randint(0, 60)) for h in hours]
+
+
+def generate_coa_timetable(stations, plan_start, days=7, history_days=7):
     """
-    COA feed: for each corridor produce (a) a train timetable of passing trains
-    and (b) the daily maintenance windows (traffic blocks the control office
-    is willing to grant), typically low-traffic night/afternoon periods.
+    COA feed:
+      (a) train running data. For the ``history_days`` before ``plan_start``
+          it holds what actually ran (passenger + goods). For the planning
+          horizon it holds only the *timetabled* passenger trains — goods
+          trains are not timetabled, which is exactly why they are forecast.
+      (b) the daily maintenance windows (traffic blocks the control office is
+          willing to grant) for the planning horizon.
     """
     train_rows = []
     window_rows = []
 
     corridors = stations[["corridor_id", "corridor_name", "traffic_gmt"]].drop_duplicates()
 
-    train_types = [
-        ("RAJ", "Rajdhani Express", 1),
-        ("SF", "Superfast Express", 2),
-        ("EXP", "Mail/Express", 3),
-        ("PASS", "Passenger", 4),
-        ("FRT", "Freight", 5),
-        ("MEMU", "MEMU/EMU", 4),
-    ]
-
-    tid = 1
     for _, cor in corridors.iterrows():
-        # number of daily trains scales with traffic
-        n_trains = int(cor["traffic_gmt"] / 2)
-        for d in range(days):
-            day = start_day + timedelta(days=d)
-            for _ in range(n_trains):
-                ttype, tname, prio = random.choice(train_types)
-                dep_minute = np.random.randint(0, 24 * 60)
-                dep = day + timedelta(minutes=int(dep_minute))
-                train_rows.append(
-                    {
-                        "train_no": f"{np.random.randint(10000, 99999)}",
-                        "train_type": ttype,
-                        "train_name": tname,
-                        "priority": prio,  # 1 highest (Rajdhani) .. 5 freight
-                        "corridor_id": cor["corridor_id"],
-                        "service_date": day.date().isoformat(),
-                        "scheduled_dep": dep.strftime("%H:%M"),
-                    }
-                )
-                tid += 1
+        paths = int(cor["traffic_gmt"] / 2)  # daily train paths scale with traffic
+        for d in range(-history_days, days):
+            day = plan_start + timedelta(days=d)
+            sunday = day.weekday() == 6
+            n_pax = int(round(paths * (1 - GOODS_SHARE) * (SUNDAY_FACTOR["pax"] if sunday else 1)))
+            n_goods = int(round(np.random.poisson(paths * GOODS_SHARE * (SUNDAY_FACTOR["goods"] if sunday else 1))))
+            batches = [("pax", n_pax, PAX_HOURLY)]
+            if d < 0:  # goods only exist as actual runs (history)
+                batches.append(("goods", n_goods, GOODS_HOURLY))
+            for kind, n, weights in batches:
+                for dep_minute in _departures(n, weights):
+                    if kind == "pax":
+                        ttype, tname, prio = random.choice(PAX_TYPES)
+                    else:
+                        ttype, tname, prio = "FRT", "Freight", 5
+                    dep = day + timedelta(minutes=dep_minute)
+                    train_rows.append(
+                        {
+                            "train_no": f"{np.random.randint(10000, 99999)}",
+                            "train_type": ttype,
+                            "train_name": tname,
+                            "priority": prio,  # 1 highest (Rajdhani) .. 5 freight
+                            "corridor_id": cor["corridor_id"],
+                            "service_date": day.date().isoformat(),
+                            "scheduled_dep": dep.strftime("%H:%M"),
+                        }
+                    )
 
+            if d < 0:
+                continue
             # Maintenance windows: control office grants blocks in low-density bands.
             # Typically 2 windows/day: a night mega-block and an afternoon lean-period.
             windows = [
@@ -311,6 +334,7 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--horizon", type=int, default=45, help="days of defect history")
     ap.add_argument("--plan-days", type=int, default=7, help="timetable/window horizon")
+    ap.add_argument("--history-days", type=int, default=7, help="days of actual train running (for forecasting)")
     args = ap.parse_args()
 
     _rng(args.seed)
@@ -329,7 +353,9 @@ def main():
     smms.to_csv(os.path.join(args.out, "smms_signal_maintenance.csv"), index=False)
     tdms.to_csv(os.path.join(args.out, "tdms_electrical_maintenance.csv"), index=False)
 
-    trains, windows = generate_coa_timetable(stations, today + timedelta(days=1), days=args.plan_days)
+    trains, windows = generate_coa_timetable(
+        stations, today + timedelta(days=1), days=args.plan_days, history_days=args.history_days
+    )
     trains.to_csv(os.path.join(args.out, "coa_timetable.csv"), index=False)
     windows.to_csv(os.path.join(args.out, "coa_maintenance_windows.csv"), index=False)
 

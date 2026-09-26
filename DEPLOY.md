@@ -18,7 +18,7 @@ From this folder (the one containing `backend/` and `frontend/`):
    creates the `railway-bps-api` Docker service (free plan).
    - (Manual alternative: New + → **Web Service** → repo → Root Directory
      `backend`, Runtime **Docker**, Health Check Path `/health`.)
-3. First build takes a few minutes (it installs OR-Tools + XGBoost). When it's
+3. First build takes a few minutes (it installs OR-Tools + scikit-learn). When it's
    live you get a URL like `https://railway-bps-api.onrender.com`.
 4. Test it: open `https://railway-bps-api.onrender.com/health` → `{"status":"healthy"}`.
 

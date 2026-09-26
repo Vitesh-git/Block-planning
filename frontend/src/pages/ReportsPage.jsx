@@ -23,9 +23,9 @@ export default function ReportsPage() {
       <div className="p-6 space-y-6">
         {/* Two-stage engine explanation */}
         {stages.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className={`grid grid-cols-1 gap-4 ${stages.length > 2 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
             {stages.map((s, i) => (
-              <div key={s.name} className={`rounded-xl border shadow-sm p-4 ${i === 1 ? 'border-rail-accent/40 bg-blue-50/40' : 'border-slate-200 bg-white'}`}>
+              <div key={s.name} className={`rounded-xl border shadow-sm p-4 ${i === stages.length - 1 ? 'border-rail-accent/40 bg-blue-50/40' : 'border-slate-200 bg-white'}`}>
                 <div className="flex items-center gap-2">
                   <span className="w-7 h-7 rounded-lg bg-rail-accent text-white flex items-center justify-center text-xs font-bold">{i + 1}</span>
                   <div>
@@ -69,12 +69,13 @@ export default function ReportsPage() {
             <h3 className="font-bold text-slate-700 mb-3">Priority Engine — model details</h3>
             {model ? (
               <>
-                <div className="grid grid-cols-3 gap-2 text-center text-sm mb-4">
-                  <Stat label="Algorithm" value={model.algorithm} />
-                  <Stat label="Accuracy" value={`${Math.round(model.accuracy * 100)}%`} />
-                  <Stat label="Classes" value={model.classes?.length} />
+                <div className="grid grid-cols-4 gap-2 text-center text-sm mb-4">
+                  <Stat label="Algorithm" value={ALGO[model.algorithm] || model.algorithm} />
+                  <Stat label="Hold-out acc." value={`${Math.round(model.accuracy * 100)}%`} />
+                  <Stat label="4-fold CV acc." value={model.cv_accuracy != null ? `${Math.round(model.cv_accuracy * 100)}%` : '—'} />
+                  <Stat label="Macro F1" value={model.macro_f1 != null ? model.macro_f1.toFixed(2) : '—'} />
                 </div>
-                <div className="text-xs font-semibold text-slate-600 mb-2">Top priority drivers (feature importance)</div>
+                <div className="text-xs font-semibold text-slate-600 mb-2">Top priority drivers (permutation importance)</div>
                 <div className="space-y-1.5">
                   {topFeatures.map(([f, v]) => (
                     <div key={f}>
@@ -87,6 +88,16 @@ export default function ReportsPage() {
                     </div>
                   ))}
                 </div>
+                {model.traffic_forecast && (
+                  <div className="mt-4 pt-3 border-t border-slate-100">
+                    <div className="text-xs font-semibold text-slate-600 mb-2">Traffic forecaster (passenger + goods)</div>
+                    <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                      <Stat label="MAE / hour" value={model.traffic_forecast.mae_trains_per_hour ?? '—'} />
+                      <Stat label="Hourly-avg MAE" value={model.traffic_forecast.baseline_mae_hourly_average ?? '—'} />
+                      <Stat label="Daily error" value={model.traffic_forecast.daily_total_error_pct != null ? `${model.traffic_forecast.daily_total_error_pct}%` : '—'} />
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
               <div className="text-slate-400 text-sm">Run the AI Planner to train and load the model.</div>
@@ -96,6 +107,10 @@ export default function ReportsPage() {
       </div>
     </>
   )
+}
+
+const ALGO = {
+  sklearn_hist_gradient_boosting: 'Gradient boosting',
 }
 
 function Stat({ label, value }) {
